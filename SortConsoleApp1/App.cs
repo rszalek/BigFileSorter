@@ -11,9 +11,10 @@ public class App
     private readonly IConfigurationRoot _config;
     private readonly ISortingProvider<Row> _sortingProvider;
     private string inputPath = "";
-    private string chunkFileExtension = "";
-    private string columnSeparator = "";
-    private long maxChunkFileSize = 0;
+    private string notSortedFileExtension = "notsorted";
+    private string sortedFileExtension = "sorted";
+    private string columnSeparator = ". ";
+    private long maxChunkFileSize = 1000;
     private string outputPath = "";
 
     public App(IConfigurationRoot config, ISortingProvider<Row> sortingProvider)
@@ -24,8 +25,10 @@ public class App
         if (inputPathValue != null) inputPath = inputPathValue;
         var columnSeparatorValue = config.GetSection("InputFileOptions:ColumnSeparator").Value;
         if (columnSeparatorValue != null) columnSeparator = columnSeparatorValue;
-        var chunkExtensionValue = config.GetSection("ChunkFileOptions:Extension").Value;
-        if (chunkExtensionValue != null) chunkFileExtension = chunkExtensionValue;
+        var chunkNotSortedExtensionValue = config.GetSection("ChunkFileOptions:NotSortedExtension").Value;
+        if (chunkNotSortedExtensionValue != null) notSortedFileExtension = chunkNotSortedExtensionValue;
+        var chunkSortedExtensionValue = config.GetSection("ChunkFileOptions:SortedExtension").Value;
+        if (chunkSortedExtensionValue != null) sortedFileExtension = chunkSortedExtensionValue;
         var maxSize = config.GetSection("ChunkFileOptions:MaxChunkFileSizeInMB").Value;
         if (maxSize != null) maxChunkFileSize = maxSize.ConvertToLong() * 1024L * 1024L; // in MB
         var outputPathValue = config.GetSection("OutputFileOptions:Path").Value;
@@ -34,86 +37,90 @@ public class App
 
     public async Task Run()
     {
+        Console.WriteLine($"{DateTime.Now:hh:mm:ss} Creating chunk files:");
         try
         {
             var inPath = string.Concat(Directory.GetCurrentDirectory(), inputPath);
             var outPath = string.Concat(Directory.GetCurrentDirectory(), outputPath);
             var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
-            
+
             // Splitting large input file into smaller files (chunks)
-            var chunkFilePathList = new List<string>();
-             using var inputFile = new StreamReader(inPath);
-             var chunkFileNumber = 0;
-             while (!inputFile.EndOfStream)
-             {
-                 var lines = new List<string>();
-                 long chunkFileSizeBytes = 0;
-                 while (!inputFile.EndOfStream && chunkFileSizeBytes < maxChunkFileSize)
-                 {
-                     var line = await inputFile.ReadLineAsync();
-                     if (line == null) continue;
-                     lines.Add(line);
-                     chunkFileSizeBytes += line.Length;// * sizeof(char);
-                 }
-                 var chunkFilePath = $"{chunkDirectory}\\{Path.GetFileNameWithoutExtension(inputPath)}_{chunkFileNumber++}.{chunkFileExtension}";
-                 using var chunkFile = new ChunkFile(_config, _sortingProvider);
-                 // Getting lines
-                 chunkFile.Lines = lines;
-                 // Sorting
-                 chunkFile.SortContent();
-                 // Writing all lines to file
-                 await chunkFile.WriteToFile(chunkFilePath); 
-                 chunkFilePathList.Add(chunkFilePath);
-             }
-            
-            // Merging chunks into one output file
-            //var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals(".chunk")).ToList();
-            await using var outputFile = new StreamWriter(outPath);
-            var readers = new StreamReader[chunkFilePathList.Count];
-            var chunkLines = new string[chunkFilePathList.Count];
-
-            for (var i = 0; i < chunkFilePathList.Count; i++)
+            using var inputFile = new StreamReader(inPath);
+            var chunkFileNumber = 0;
+            while (!inputFile.EndOfStream)
             {
-                readers[i] = new StreamReader(chunkFilePathList[i]);
-                chunkLines[i] = await readers[i].ReadLineAsync();
+                var lines = new List<string>();
+                long chunkFileSizeBytes = 0;
+                while (!inputFile.EndOfStream && chunkFileSizeBytes < maxChunkFileSize)
+                {
+                    var line = await inputFile.ReadLineAsync();
+                    if (line == null) continue;
+                    lines.Add(line);
+                    chunkFileSizeBytes += line.Length; // * sizeof(char);
+                }
+                var notSortedChunkFilePath = $"{chunkDirectory}\\{Path.GetFileNameWithoutExtension(inputPath)}_{chunkFileNumber++}.{notSortedFileExtension}";
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} Not sorted chunk data ({chunkFileNumber}) created");
+                await using var chunkFile = new ChunkFile(_config, _sortingProvider, lines);
+                // Writing all lines to file
+                await chunkFile.WriteToFile(notSortedChunkFilePath);
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} Not sorted chunk ({chunkFileNumber}) written to file {notSortedChunkFilePath}");
             }
-
-            // while (true)
-            // {
-            //     var smallestIndex = -1;
-            //     var smallestLine = string.Empty;
-            //     for (var index = 0; index < chunkFilePathList.Count; index++)
-            //     {
-            //         if (smallestLine.Length > 0 && string.CompareOrdinal(chunkLines[index], smallestLine) >= 0) continue;
-            //         smallestIndex = index;
-            //         smallestLine = chunkLines[index];
-            //     }
-            //     if (smallestIndex == -1) break;
-            //     var textValue = smallestLine.Substring(0, smallestLine.Length - 24);
-            //     var numberValue = smallestLine.Substring(smallestLine.Length - 24).ConvertToLong();
-            //     var formattedLine = $"{numberValue}{columnSeparator}{textValue}";
-            //     await outputFile.WriteLineAsync(formattedLine);
-            //     chunkLines[smallestIndex] = await readers[smallestIndex].ReadLineAsync();
-            //     if (chunkLines[smallestIndex] == null)
-            //     {
-            //         readers[smallestIndex].Dispose();
-            //         //todo uncomment File.Delete(chunkFilePathList[smallestIndex]);
-            //     }
-            // }
-            /*var outputFileWriter = new OutputFileWriter(outPath);
+            
+            // Sorting chunk files
+            Console.WriteLine();
+            Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorting chunk files");
             try
             {
+                // Sorting
+                // Creating chunk file readers
+                var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{notSortedFileExtension}")).ToList();
 
-                await outputFileWriter.FlushAll();
+                async Task ParallelSort(string notSortedChunkFilePath)
+                {
+                    var sortedChunkFileName = Path.GetFileNameWithoutExtension(notSortedChunkFilePath);
+                    Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorting chunk file {sortedChunkFileName} started");
+                    var sortedChunkFilePath = $"{chunkDirectory}\\{sortedChunkFileName}.{sortedFileExtension}";
+                    var notSortedChunkFile = new ChunkFile(_config, _sortingProvider, new List<string>());
+                    await notSortedChunkFile.ReadFromFile(notSortedChunkFilePath);
+                    await notSortedChunkFile.SortContent();
+                    await notSortedChunkFile.WriteToFile(sortedChunkFilePath);
+                    Console.WriteLine($"{DateTime.Now:hh:mm:ss} Chunk file {sortedChunkFileName} has been sorted");
+                }
+
+                //var parallel = Parallel.ForEach(chunkFilePathList, ParallelSort);
+                //await Task.Run(() => Parallel.ForEach(chunkFilePathList, ParallelSort));
+                var sortTasks = new List<Task>();
+                foreach (var notSortedChunkFilePath in chunkFilePathList)
+                {
+                    sortTasks.Add(ParallelSort(notSortedChunkFilePath));
+                }
+                await Task.WhenAll(sortTasks);
             }
-            finally
+            catch (Exception ex)
             {
-                outputFileWriter.Dispose();
-            }*/
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} ERROR: {ex.Message}, {ex.StackTrace}");
+            }
+            
+            // Merging sorted chunk files
+            Console.WriteLine();
+            Console.WriteLine($"{DateTime.Now:hh:mm:ss} Merging sorted chunk files");
+            try
+            {
+                await using var outputFileWriter = new OutputFileWriter(_config, _sortingProvider);
+                await outputFileWriter.ProcessChunks();
+                //await outputFileWriter.FlushAllAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} ERROR: {ex.Message}, {ex.StackTrace}");
+            }
+            Console.WriteLine($"{DateTime.Now:hh:mm:ss} Output file created.");
+            Console.WriteLine($"Press any key to exit.");
+            Console.ReadKey();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ERROR: {ex.Message}, {ex.StackTrace}");
+            Console.WriteLine($"{DateTime.Now:hh:mm:ss} ERROR: {ex.Message}, {ex.StackTrace}");
         }
     }
 }

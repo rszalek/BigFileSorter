@@ -5,9 +5,9 @@ namespace SortConsoleApp1;
 
 public class SortingProvider: ISortingProvider<Row>
 {
-    public void Sort(List<Row> inputList)
+    public async Task Sort(List<Row> inputList)
     {
-        inputList.Sort(Comparison);
+        await Task.Run(() => { inputList.Sort(Comparison); });
     }
 
     public int Comparison(Row row1, Row row2)

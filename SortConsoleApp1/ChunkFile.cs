@@ -7,58 +7,62 @@ using SortConsoleApp1.Interfaces;
 
 namespace SortConsoleApp1;
 
-public class ChunkFile: IDisposable
+public class ChunkFile: IAsyncDisposable
 {
     private IConfigurationRoot _config;
     private ISortingProvider<Row> _sortingProvider;
     private readonly List<Row> _content = new List<Row>();
-    private string _separator = ". ";
+    private readonly string _separator = ". ";
+    private List<string> _lines;
 
-    public List<string> Lines { get; set; }
-
-    public ChunkFile(IConfigurationRoot config, ISortingProvider<Row> sortingProvider)
+    public ChunkFile(IConfigurationRoot config, ISortingProvider<Row> sortingProvider, IList<string> lines)
     {
         _config = config;
         _sortingProvider = sortingProvider;
-        
+        _lines = lines.ToList();
+
         var columnSeparatorValue = _config.GetSection("InputFileOptions:ColumnSeparator").Value;
         if (columnSeparatorValue != null) _separator = columnSeparatorValue;
     }
 
-    public async Task ReadAllLines(string path)
+    public async Task ReadFromFile(string path)
     {
         using var fileReader = File.OpenText(path);
-        while (!fileReader.EndOfStream)
-        {
-            var line = await fileReader.ReadLineAsync();
-            if (line == null) continue;
-            var cells = line.Split(_separator);
-            _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-        }
+        var allData = await fileReader.ReadToEndAsync();
+        _lines = allData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
     }
     
-    public void SortContent()
+    public async Task SortContent()
     {
-        foreach (var line in Lines)
+        foreach (var line in _lines)
         {
             var cells = line.Split(_separator);
             _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
         }
-        _sortingProvider.Sort(_content);
+        await _sortingProvider.Sort(_content);
+        _lines.Clear();
+        foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
+        {
+            _lines.Add(line);
+        }
     }
 
     public async Task WriteToFile(string path)
     {
+        var buffer = new StringBuilder();
         await using var fileWriter = File.CreateText(path);
-        // write lines in a special format [Text]|[0..0Number] to be able to treat every line as text for sorting
-        foreach (var line in _content.Select(row => $"{row.Text}|{row.Number}"))
+        foreach (var line in _lines)
         {
-            await fileWriter.WriteLineAsync(line);
+            buffer.AppendLine(line);
         }
+        await fileWriter.WriteAsync(buffer.ToString());
+        await fileWriter.FlushAsync();
+        await fileWriter.DisposeAsync();
     }
-    
-    public void Dispose()
+
+    public ValueTask DisposeAsync()
     {
         _content.Clear();
+        return default;
     }
 }
