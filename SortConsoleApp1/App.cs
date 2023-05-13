@@ -47,23 +47,30 @@ public class App
             // Splitting large input file into smaller files (chunks)
             using var inputFile = new StreamReader(inPath);
             var chunkFileNumber = 0;
+            //var lines = new List<string>();
+            //var inputFileLength = new FileInfo(inPath).Length;
+            StringBuilder readBuffer;
             while (!inputFile.EndOfStream)
             {
-                var lines = new List<string>();
+                readBuffer = new StringBuilder();
                 long chunkFileSizeBytes = 0;
                 while (!inputFile.EndOfStream && chunkFileSizeBytes < maxChunkFileSize)
                 {
                     var line = await inputFile.ReadLineAsync();
                     if (line == null) continue;
-                    lines.Add(line);
+                    //lines.Add(line);
+                    readBuffer.AppendLine(line);
                     chunkFileSizeBytes += line.Length; // * sizeof(char);
                 }
-                var notSortedChunkFilePath = $"{chunkDirectory}\\{Path.GetFileNameWithoutExtension(inputPath)}_{chunkFileNumber++}.{notSortedFileExtension}";
+                var notSortedChunkFileName = $"{Path.GetFileNameWithoutExtension(inputPath)}_{chunkFileNumber++}.{notSortedFileExtension}";
+                var notSortedChunkFilePath = Path.Combine(chunkDirectory, notSortedChunkFileName);
                 Console.WriteLine($"{DateTime.Now:hh:mm:ss} Not sorted chunk data ({chunkFileNumber}) created");
-                await using var chunkFile = new ChunkFile(_config, _sortingProvider, lines);
+                await using var chunkFile = new StreamWriter(notSortedChunkFilePath);
                 // Writing all lines to file
-                await chunkFile.WriteToFile(notSortedChunkFilePath);
-                Console.WriteLine($"{DateTime.Now:hh:mm:ss} Not sorted chunk ({chunkFileNumber}) written to file {notSortedChunkFilePath}");
+                await chunkFile.WriteAsync(readBuffer);
+                //lines.Clear();
+                readBuffer.Clear();
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} Not sorted chunk ({chunkFileNumber}) written to file {notSortedChunkFileName}");
             }
             
             // Sorting chunk files
@@ -77,14 +84,14 @@ public class App
 
                 async Task ParallelSort(string notSortedChunkFilePath)
                 {
-                    var sortedChunkFileName = Path.GetFileNameWithoutExtension(notSortedChunkFilePath);
-                    Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorting chunk file {sortedChunkFileName} started");
-                    var sortedChunkFilePath = $"{chunkDirectory}\\{sortedChunkFileName}.{sortedFileExtension}";
-                    var notSortedChunkFile = new ChunkFile(_config, _sortingProvider, new List<string>());
-                    await notSortedChunkFile.ReadFromFile(notSortedChunkFilePath);
-                    await notSortedChunkFile.SortContent();
-                    await notSortedChunkFile.WriteToFile(sortedChunkFilePath);
-                    Console.WriteLine($"{DateTime.Now:hh:mm:ss} Chunk file {sortedChunkFileName} has been sorted");
+                    // var sortedChunkFileName = Path.GetFileNameWithoutExtension(notSortedChunkFilePath);
+                    // Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorting chunk file {sortedChunkFileName} started");
+                    // var sortedChunkFilePath = $"{chunkDirectory}\\{sortedChunkFileName}.{sortedFileExtension}";
+                    // await using var notSortedChunkFile = new ChunkFile(_config, _sortingProvider, new List<string>());
+                    // await notSortedChunkFile.ReadFromFile(notSortedChunkFilePath);
+                    // await notSortedChunkFile.SortContent();
+                    // await notSortedChunkFile.WriteToFile(sortedChunkFilePath);
+                    // Console.WriteLine($"{DateTime.Now:hh:mm:ss} Chunk file {sortedChunkFileName} has been sorted");
                 }
 
                 //var parallel = Parallel.ForEach(chunkFilePathList, ParallelSort);

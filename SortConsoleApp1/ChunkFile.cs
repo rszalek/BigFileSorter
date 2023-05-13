@@ -15,28 +15,31 @@ public class ChunkFile: IAsyncDisposable
     private readonly string _separator = ". ";
     private List<string> _lines;
 
-    public ChunkFile(IConfigurationRoot config, ISortingProvider<Row> sortingProvider, IList<string> lines)
+    public ChunkFile(IConfigurationRoot config, ISortingProvider<Row> sortingProvider)
     {
         _config = config;
         _sortingProvider = sortingProvider;
-        _lines = lines.ToList();
-
         var columnSeparatorValue = _config.GetSection("InputFileOptions:ColumnSeparator").Value;
         if (columnSeparatorValue != null) _separator = columnSeparatorValue;
     }
 
-    public async Task ReadFromFile(string path)
+    public async Task ReadFromFileAsync(string inputPath)
     {
-        using var fileReader = File.OpenText(path);
-        var allData = await fileReader.ReadToEndAsync();
-        _lines = allData.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+        using var reader = File.OpenText(inputPath);
+        var buffer = await reader.ReadToEndAsync();
+        LoadContent(buffer);
+    }
+    
+    public void LoadContent(string buffer)
+    {
+        _lines.Clear();
+        _lines = buffer.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
     }
     
     public async Task SortContent()
     {
-        foreach (var line in _lines)
+        foreach (var cells in _lines.Select(line => line.Split(_separator)))
         {
-            var cells = line.Split(_separator);
             _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
         }
         await _sortingProvider.Sort(_content);
@@ -47,22 +50,27 @@ public class ChunkFile: IAsyncDisposable
         }
     }
 
-    public async Task WriteToFile(string path)
+    public async Task WriteToFileAsync(string outPath)
     {
+        await using var writer = new StreamWriter(outPath); 
         var buffer = new StringBuilder();
-        await using var fileWriter = File.CreateText(path);
-        foreach (var line in _lines)
+        try
         {
-            buffer.AppendLine(line);
+            foreach (var line in _lines)
+            {
+                buffer.AppendLine(line);
+            }
+            await writer.WriteLineAsync(buffer.ToString());
         }
-        await fileWriter.WriteAsync(buffer.ToString());
-        await fileWriter.FlushAsync();
-        await fileWriter.DisposeAsync();
+        finally
+        {
+            buffer.Clear();
+        }
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        _lines.Clear();
         _content.Clear();
-        return default;
     }
 }
