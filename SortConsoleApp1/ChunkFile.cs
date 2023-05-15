@@ -9,16 +9,16 @@ namespace SortConsoleApp1;
 
 public class ChunkFile: IAsyncDisposable
 {
-    private IConfigurationRoot _config;
-    private ISortingProvider<Row> _sortingProvider;
+    private IConfiguration _config;
+    private ISortingService<Row> _sortingService;
     private readonly List<Row> _content = new List<Row>();
     private readonly string _separator = ". ";
-    private List<string> _lines;
+    private List<string> _lines = new List<string>();
 
-    public ChunkFile(IConfigurationRoot config, ISortingProvider<Row> sortingProvider)
+    public ChunkFile(IConfiguration config, ISortingService<Row> sortingService)
     {
         _config = config;
-        _sortingProvider = sortingProvider;
+        _sortingService = sortingService;
         var columnSeparatorValue = _config.GetSection("InputFileOptions:ColumnSeparator").Value;
         if (columnSeparatorValue != null) _separator = columnSeparatorValue;
     }
@@ -29,8 +29,8 @@ public class ChunkFile: IAsyncDisposable
         var buffer = await reader.ReadToEndAsync();
         LoadContent(buffer);
     }
-    
-    public void LoadContent(string buffer)
+
+    private void LoadContent(string buffer)
     {
         _lines.Clear();
         _lines = buffer.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -42,7 +42,7 @@ public class ChunkFile: IAsyncDisposable
         {
             _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
         }
-        await _sortingProvider.Sort(_content);
+        await _sortingService.Sort(_content);
         _lines.Clear();
         foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
         {

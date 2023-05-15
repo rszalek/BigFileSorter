@@ -3,7 +3,7 @@ using SortConsoleApp1.Interfaces;
 
 namespace SortConsoleApp1;
 
-public class SortingProvider: ISortingProvider<Row>
+internal sealed class SortingService: ISortingService<Row>
 {
     public async Task Sort(List<Row> inputList)
     {

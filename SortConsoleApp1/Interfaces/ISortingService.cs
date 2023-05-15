@@ -1,6 +1,6 @@
 namespace SortConsoleApp1.Interfaces;
 
-public interface ISortingProvider<T>
+public interface ISortingService<T>
 {
     public Task Sort(List<T> inputList);
 
