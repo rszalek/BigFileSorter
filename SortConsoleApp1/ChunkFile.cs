@@ -25,9 +25,16 @@ public class ChunkFile: IAsyncDisposable
 
     public async Task ReadFromFileAsync(string inputPath)
     {
+        _lines.Clear();
         using var reader = File.OpenText(inputPath);
-        var buffer = await reader.ReadToEndAsync();
-        LoadContent(buffer);
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync();
+            if (string.IsNullOrEmpty(line)) continue;
+            _lines.Add(line);
+        }
+        //var buffer = await reader.ReadToEndAsync();
+        //LoadContent(buffer);
     }
 
     private void LoadContent(string buffer)
@@ -72,5 +79,6 @@ public class ChunkFile: IAsyncDisposable
     {
         _lines.Clear();
         _content.Clear();
+        GC.Collect();
     }
 }

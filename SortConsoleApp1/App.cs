@@ -35,7 +35,6 @@ public class App
         try
         {
             var inPath = string.Concat(Directory.GetCurrentDirectory(), inputPath);
-            var outPath = string.Concat(Directory.GetCurrentDirectory(), outputPath);
             var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
 
             // Splitting large input file into smaller files (chunks)
@@ -84,7 +83,7 @@ public class App
 
                 // Multi threaded sorting action
                 var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{notSortedFileExtension}")).ToList();
-                var sortTasks = chunkFilePathList.Select(ParallelSort).ToList();
+                var sortTasks = chunkFilePathList.Select(async chunkPath => await ParallelSort(chunkPath)).ToList();
                 await Task.WhenAll(sortTasks);
             }
             catch (Exception ex)
