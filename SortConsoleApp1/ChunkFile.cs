@@ -7,7 +7,7 @@ using SortConsoleApp1.Interfaces;
 
 namespace SortConsoleApp1;
 
-public class ChunkFile: IAsyncDisposable
+public class ChunkFile: IDisposable
 {
     private IConfiguration _config;
     private ISortingService<Row> _sortingService;
@@ -19,20 +19,29 @@ public class ChunkFile: IAsyncDisposable
     {
         _config = config;
         _sortingService = sortingService;
-        var columnSeparatorValue = _config.GetSection("InputFileOptions:ColumnSeparator").Value;
-        if (columnSeparatorValue != null) _separator = columnSeparatorValue;
+        _separator = _config.GetSection("InputFileOptions").GetValue<string>("ColumnSeparator") ?? ". ";
+    }
+
+    public void ReadFromFile(string inputPath)
+    {
+        _lines.Clear();
+        var readLines = File.ReadAllLines(inputPath);
+        _lines = readLines.ToList();
     }
 
     public async Task ReadFromFileAsync(string inputPath)
     {
         _lines.Clear();
-        using var reader = File.OpenText(inputPath);
-        while (!reader.EndOfStream)
-        {
-            var line = await reader.ReadLineAsync();
-            if (string.IsNullOrEmpty(line)) continue;
-            _lines.Add(line);
-        }
+        var readLines = await File.ReadAllLinesAsync(inputPath);
+        _lines = readLines.ToList();
+
+        // using var reader = File.OpenText(inputPath);
+        // while (!reader.EndOfStream)
+        // {
+        //     var line = await reader.ReadLineAsync();
+        //     if (string.IsNullOrEmpty(line)) continue;
+        //     _lines.Add(line);
+        // }
         //var buffer = await reader.ReadToEndAsync();
         //LoadContent(buffer);
     }
@@ -43,13 +52,14 @@ public class ChunkFile: IAsyncDisposable
         _lines = buffer.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
     }
     
-    public async Task SortContent()
+    public void SortContent()
     {
         foreach (var cells in _lines.Select(line => line.Split(_separator)))
         {
+            if (cells.Length < 1) continue;
             _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
         }
-        await _sortingService.Sort(_content);
+        _sortingService.Sort(_content);
         _lines.Clear();
         foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
         {
@@ -57,25 +67,49 @@ public class ChunkFile: IAsyncDisposable
         }
     }
 
-    public async Task WriteToFileAsync(string outPath)
+    public async Task SortContentAsync()
     {
-        await using var writer = new StreamWriter(outPath); 
-        var buffer = new StringBuilder();
-        try
+        foreach (var cells in _lines.Select(line => line.Split(_separator)))
         {
-            foreach (var line in _lines)
-            {
-                buffer.AppendLine(line);
-            }
-            await writer.WriteLineAsync(buffer.ToString());
+            _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
         }
-        finally
+        await _sortingService.SortAsync(_content);
+        _lines.Clear();
+        foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
         {
-            buffer.Clear();
+            _lines.Add(line);
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public void WriteToFile(string outPath)
+    {
+        File.WriteAllLines(outPath, _lines);
+    }
+
+    public async Task WriteToFileAsync(string outPath)
+    {
+        await File.WriteAllLinesAsync(outPath, _lines);
+        
+        
+        // await using var writer = new StreamWriter(outPath); 
+        // var buffer = new StringBuilder();
+        // try
+        // {
+        //     foreach (var line in _lines)
+        //     {
+        //         buffer.AppendLine(line);
+        //     }
+        //     await writer.WriteLineAsync(buffer.ToString());
+        // }
+        // finally
+        // {
+        //     await writer.FlushAsync();
+        //     buffer.Clear();
+        //     writer.Close();
+        // }
+    }
+
+    public void Dispose()
     {
         _lines.Clear();
         _content.Clear();

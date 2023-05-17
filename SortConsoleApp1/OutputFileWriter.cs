@@ -12,20 +12,24 @@ public class OutputFileWriter: IAsyncDisposable
     private readonly StreamWriter _streamWriter;
     private List<StreamReader> _readers;
     private List<Row> _chunkRows;
+    private string inputPath = "";
+    private string outputPath = "";
+    private string notSortedFileExtension = "notsorted";
+    private string sortedFileExtension = "sorted";
+    private bool deleteAfterSorting = true;
 
     public OutputFileWriter(IConfiguration config, ISortingService<Row> sortingService)
     {
         _config = config;
         _sortingService = sortingService;
-        var inputPathValue = _config.GetSection("InputFileOptions").GetValue<string>("Path");
-        if (inputPathValue == null) return; //todo log or exception
-        var outputPathValue = config.GetSection("OutputFileOptions:Path").Value;
-        if (outputPathValue == null) return; //todo log or exception
-        var outPath = string.Concat(Directory.GetCurrentDirectory(), outputPathValue);
-        var chunkSortedExtensionValue = _config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension");
-        if (chunkSortedExtensionValue == null)  return; //todo log or exception;
-        var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPathValue));
-        var sortedChunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{chunkSortedExtensionValue}")).ToList();
+        inputPath = _config.GetSection("InputFileOptions").GetValue<string>("Path") ?? string.Empty;
+        outputPath = _config.GetSection("OutputFileOptions").GetValue<string>("Path") ?? string.Empty;
+        var fullOutputPath = string.Concat(Directory.GetCurrentDirectory(), outputPath);
+        sortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension") ?? string.Empty;
+        notSortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension") ?? string.Empty;
+        deleteAfterSorting = _config.GetSection("ChunkFileOptions").GetValue<bool>("DeleteNotSortedChunks");
+        var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
+        var sortedChunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{sortedFileExtension}")).ToList();
         _readers = new List<StreamReader>();
         // Creating chunk file readers for not empty chunks
         foreach (var streamReader in sortedChunkFilePathList.Select(chunkPath => new StreamReader(chunkPath)).Where(streamReader => !streamReader.EndOfStream))
@@ -33,7 +37,7 @@ public class OutputFileWriter: IAsyncDisposable
             _readers.Add(streamReader);
         }
         _chunkRows = new List<Row>();
-        _streamWriter = File.CreateText(outPath);
+        _streamWriter = File.CreateText(fullOutputPath);
         Console.WriteLine($"{DateTime.Now:hh:mm:ss} Output file initiated");
     }
 
@@ -112,8 +116,6 @@ public class OutputFileWriter: IAsyncDisposable
     {
         try
         {
-            var inputPath = _config.GetSection("InputFileOptions").GetValue<string>("Path");
-            var notSortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension");
             var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
             var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{notSortedFileExtension}")).ToList();
             foreach (var path in chunkFilePathList)
@@ -148,6 +150,9 @@ public class OutputFileWriter: IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _streamWriter.DisposeAsync();
-        DeleteNotSortedChunkFiles();
+        if (deleteAfterSorting)
+        {
+            DeleteNotSortedChunkFiles();
+        }
     }
 }

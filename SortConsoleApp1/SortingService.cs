@@ -5,7 +5,12 @@ namespace SortConsoleApp1;
 
 internal sealed class SortingService: ISortingService<Row>
 {
-    public async Task Sort(List<Row> inputList)
+    public void Sort(List<Row> inputList)
+    {
+        inputList.Sort(Comparison);
+    }
+
+    public async Task SortAsync(List<Row> inputList)
     {
         await Task.Run(() => { inputList.Sort(Comparison); });
     }
