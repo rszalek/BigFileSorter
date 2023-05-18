@@ -7,7 +7,7 @@ using SortConsoleApp1.Interfaces;
 
 namespace SortConsoleApp1;
 
-public class ChunkFile: IDisposable
+public class ChunkFile: IAsyncDisposable
 {
     private IConfiguration _config;
     private ISortingService<Row> _sortingService;
@@ -109,10 +109,11 @@ public class ChunkFile: IDisposable
         // }
     }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
         _lines.Clear();
         _content.Clear();
         GC.Collect();
+        return ValueTask.CompletedTask;
     }
 }

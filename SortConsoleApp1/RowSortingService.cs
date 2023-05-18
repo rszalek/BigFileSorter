@@ -23,4 +23,13 @@ internal sealed class SortingService: ISortingService<Row>
         if (row1.Number < row2.Number) return -1;
         return 0;
     }
+    
+    public int StringComparison(Row row1, Row row2)
+    {
+        var compare = string.Compare(row1.Text, row2.Text, StringComparison.Ordinal);
+        if (compare != 0) return compare;
+        if (row1.Number > row2.Number) return 1;
+        if (row1.Number < row2.Number) return -1;
+        return 0;
+    }
 }
