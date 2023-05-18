@@ -3,14 +3,14 @@ using SortConsoleApp1.Interfaces;
 
 namespace SortConsoleApp1;
 
-internal sealed class SortingService: ISortingService<Row>
+internal sealed class RowSortingService: ISortingService<Row>
 {
-    public void Sort(List<Row> inputList)
+    public void Sort(List<Row> inputList, string columnSeparator = "")
     {
         inputList.Sort(Comparison);
     }
 
-    public async Task SortAsync(List<Row> inputList)
+    public async Task SortAsync(List<Row> inputList, string columnSeparator = "")
     {
         await Task.Run(() => { inputList.Sort(Comparison); });
     }

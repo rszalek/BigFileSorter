@@ -8,17 +8,17 @@ namespace SortConsoleApp1;
 public class OutputFileWriter: IAsyncDisposable
 {
     private readonly IConfiguration _config;
-    private readonly ISortingService<Row> _sortingService;
+    private readonly ISortingService<string> _sortingService;
     private readonly StreamWriter _streamWriter;
     private List<StreamReader> _readers;
-    private List<Row> _chunkRows;
+    private List<string> _chunkRows;
     private string inputPath = "";
     private string outputPath = "";
     private string notSortedFileExtension = "notsorted";
     private string sortedFileExtension = "sorted";
     private bool deleteAfterSorting = true;
 
-    public OutputFileWriter(IConfiguration config, ISortingService<Row> sortingService)
+    public OutputFileWriter(IConfiguration config, ISortingService<string> sortingService)
     {
         _config = config;
         _sortingService = sortingService;
@@ -36,7 +36,7 @@ public class OutputFileWriter: IAsyncDisposable
         {
             _readers.Add(streamReader);
         }
-        _chunkRows = new List<Row>();
+        _chunkRows = new List<string>();
         _streamWriter = File.CreateText(fullOutputPath);
         Console.WriteLine($"{DateTime.Now:hh:mm:ss} Output file initiated");
     }
@@ -53,8 +53,9 @@ public class OutputFileWriter: IAsyncDisposable
         {
             var line = await chunkReader.ReadLineAsync();
             if (line == null) continue; // should not happen, because it means EndOfStream = true and these are filtered out
-            var cells = line.Split(columnSeparatorValue);
-            _chunkRows.Add(new Row(cells[0].ConvertToLong(), cells[1]));
+            //var cells = line.Split(columnSeparatorValue);
+            //_chunkRows.Add(new Row(cells[0].ConvertToLong(), cells[1]));
+            _chunkRows.Add(line);
         }
 
         Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorted chunk files found: {_readers.Count}. Processing...");
@@ -65,7 +66,7 @@ public class OutputFileWriter: IAsyncDisposable
         while (true)
         {
             var smallestValueChunkIndex = -1;
-            Row? smallestValueRow = null;
+            string? smallestValueRow = null;
             // Find smallest Row value from the first lines of chunks
             for (var chunkFileIndex = 0; chunkFileIndex < _readers.Count; chunkFileIndex++)
             {
@@ -85,7 +86,8 @@ public class OutputFileWriter: IAsyncDisposable
                 buffer = new StringBuilder();
                 continue;
             }
-            buffer.AppendLine($"{smallestValueRow.Number}{columnSeparatorValue}{smallestValueRow.Text}");
+            //buffer.AppendLine($"{smallestValueRow.Number}{columnSeparatorValue}{smallestValueRow.Text}");
+            buffer.AppendLine(smallestValueRow);
             // Read next line from the chunk which had the smallest value
             var line = "";
             do
@@ -99,8 +101,9 @@ public class OutputFileWriter: IAsyncDisposable
                 _chunkRows.RemoveAt(smallestValueChunkIndex);
                 continue;
             }
-            var cells = line.Split(columnSeparatorValue);
-            _chunkRows[smallestValueChunkIndex] = new Row(cells[0].ConvertToLong(), cells[1]);
+            //var cells = line.Split(columnSeparatorValue);
+            //_chunkRows[smallestValueChunkIndex] = new Row(cells[0].ConvertToLong(), cells[1]);
+            _chunkRows[smallestValueChunkIndex] = line;
             bufferIndex++;
         }
         // if still anything in the buffer

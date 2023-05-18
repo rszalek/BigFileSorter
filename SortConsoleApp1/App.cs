@@ -9,41 +9,41 @@ namespace SortConsoleApp1;
 public class App
 {
     private readonly IConfiguration _config;
-    private readonly ISortingService<Row> _sortingService;
-    private string inputPath = "";
-    private string notSortedFileExtension = "notsorted";
-    private string sortedFileExtension = "sorted";
-    private string columnSeparator = ". ";
-    private long maxChunkFileSize = 1000;
-    private bool deleteAfterSorting = true;
-    private bool useNotSortedChunksOnly = false;
-    private string outputPath = "";
-    private int tasksPerGroup = 4;
+    private readonly ISortingService<string> _sortingService;
+    private readonly string _inputPath;
+    private readonly string _notSortedFileExtension;
+    private readonly string _sortedFileExtension;
+    private string _columnSeparator;
+    private readonly long _maxChunkFileSize;
+    private readonly bool _deleteAfterSorting;
+    private readonly bool _useNotSortedChunksOnly = false;
+    private string _outputPath = "";
+    private readonly int _tasksPerGroup;
 
-    public App(IConfiguration config, ISortingService<Row> sortingService)
+    public App(IConfiguration config, ISortingService<string> sortingService)
     {
         _config = config;
         _sortingService = sortingService;
-        inputPath = config.GetSection("InputFileOptions").GetValue<string>("Path") ?? string.Empty;
-        columnSeparator = config.GetSection("InputFileOptions").GetValue<string>("ColumnSeparator") ?? string.Empty;
-        notSortedFileExtension = config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension") ?? string.Empty;
-        sortedFileExtension = config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension") ?? string.Empty;
-        maxChunkFileSize = config.GetSection("ChunkFileOptions").GetValue<long>("MaxChunkFileSizeInMB") * 1024L * 1024L;
-        useNotSortedChunksOnly = config.GetSection("ChunkFileOptions").GetValue<bool>("UseNotSortedChunksOnly");
-        deleteAfterSorting = config.GetSection("ChunkFileOptions").GetValue<bool>("DeleteSortedChunks");
-        outputPath = config.GetSection("OutputFileOptions").GetValue<string>("Path") ?? string.Empty;
-        tasksPerGroup = config.GetSection("Sorting").GetValue<int>("TasksPerGroup");
+        _inputPath = config.GetSection("InputFileOptions").GetValue<string>("Path") ?? string.Empty;
+        _columnSeparator = config.GetSection("InputFileOptions").GetValue<string>("ColumnSeparator") ?? string.Empty;
+        _notSortedFileExtension = config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension") ?? string.Empty;
+        _sortedFileExtension = config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension") ?? string.Empty;
+        _maxChunkFileSize = config.GetSection("ChunkFileOptions").GetValue<long>("MaxChunkFileSizeInMB") * 1024L * 1024L;
+        _useNotSortedChunksOnly = config.GetSection("ChunkFileOptions").GetValue<bool>("UseNotSortedChunksOnly");
+        _deleteAfterSorting = config.GetSection("ChunkFileOptions").GetValue<bool>("DeleteSortedChunks");
+        _outputPath = config.GetSection("OutputFileOptions").GetValue<string>("Path") ?? string.Empty;
+        _tasksPerGroup = config.GetSection("Sorting").GetValue<int>("TasksPerGroup");
     }
 
     public async Task Run()
     {
         try
         {
-            var inPath = string.Concat(Directory.GetCurrentDirectory(), inputPath);
-            var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
-            var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{notSortedFileExtension}")).ToList();
+            var inPath = string.Concat(Directory.GetCurrentDirectory(), _inputPath);
+            var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(_inputPath));
+            var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{_notSortedFileExtension}")).ToList();
 
-            if (useNotSortedChunksOnly) // for testing purpose
+            if (_useNotSortedChunksOnly) // for testing purpose
             {
                 Console.WriteLine($"{DateTime.Now:hh:mm:ss} Reusing existing {chunkFilePathList.Count} chunk files:");
             }
@@ -57,7 +57,7 @@ public class App
                 {
                     var readBuffer = new StringBuilder();
                     long chunkFileSizeBytes = 0;
-                    while (!inputFile.EndOfStream && chunkFileSizeBytes < maxChunkFileSize)
+                    while (!inputFile.EndOfStream && chunkFileSizeBytes < _maxChunkFileSize)
                     {
                         var line = await inputFile.ReadLineAsync();
                         if (line == null) continue;
@@ -65,7 +65,7 @@ public class App
                         readBuffer.AppendLine(line);
                         chunkFileSizeBytes += line.Length; // * sizeof(char);
                     }
-                    var notSortedChunkFileName = $"{Path.GetFileNameWithoutExtension(inputPath)}_{chunkFileNumber++}.{notSortedFileExtension}";
+                    var notSortedChunkFileName = $"{Path.GetFileNameWithoutExtension(_inputPath)}_{chunkFileNumber++}.{_notSortedFileExtension}";
                     var notSortedChunkFilePath = Path.Combine(chunkDirectory, notSortedChunkFileName);
                     Console.WriteLine($"{DateTime.Now:hh:mm:ss} Not sorted chunk data ({chunkFileNumber}) created");
                     await using var chunkFile = new StreamWriter(notSortedChunkFilePath);
@@ -87,7 +87,7 @@ public class App
                 {
                     var sortedChunkFileName = Path.GetFileNameWithoutExtension(notSortedChunkFilePath);
                     Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorting chunk file {sortedChunkFileName} started");
-                    var sortedChunkFilePath = $"{chunkDirectory}\\{sortedChunkFileName}.{sortedFileExtension}";
+                    var sortedChunkFilePath = $"{chunkDirectory}\\{sortedChunkFileName}.{_sortedFileExtension}";
                     using var notSortedChunkFile = new ChunkFile(_config, _sortingService);
                     notSortedChunkFile.ReadFromFile(notSortedChunkFilePath);
                     notSortedChunkFile.SortContent();
@@ -101,13 +101,12 @@ public class App
                 var sortTasks = new List<Task>();
                 foreach (var chunkPath in chunkFilePathList)
                 {
-                    async void ParallelSortAction() => ParallelSort(chunkPath);
-                    var task = new Task(ParallelSortAction); 
+                    var task = new Task(() => ParallelSort(chunkPath)); 
                     sortTasks.Add(task);
                 }
                 Console.WriteLine($"{DateTime.Now:hh:mm:ss} Tasks to be run: {sortTasks.Count}");
                 // Split tasks into groups of [tasksPerGroup]
-                var sortTaskGroups = sortTasks.Chunk(tasksPerGroup).ToList();
+                var sortTaskGroups = sortTasks.Chunk(_tasksPerGroup).ToList();
                 Console.WriteLine($"{DateTime.Now:hh:mm:ss} Processing {sortTaskGroups.Count} groups of tasks");
                 //var semaphore = new SemaphoreSlim(1);
                 foreach (var sortTaskGroup in sortTaskGroups)
@@ -154,7 +153,7 @@ public class App
             }
             finally
             {
-                if (deleteAfterSorting)
+                if (_deleteAfterSorting)
                 {
                     DeleteSortedChunkFiles();
                 }
@@ -173,8 +172,8 @@ public class App
     {
         try
         {
-            var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
-            var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{sortedFileExtension}")).ToList();
+            var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(_inputPath));
+            var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{_sortedFileExtension}")).ToList();
             foreach (var path in chunkFilePathList)
             {
                 var pathToDelete = Path.ChangeExtension(path, ".old");

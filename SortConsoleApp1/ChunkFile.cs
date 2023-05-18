@@ -9,13 +9,13 @@ namespace SortConsoleApp1;
 
 public class ChunkFile: IDisposable
 {
-    private IConfiguration _config;
-    private ISortingService<Row> _sortingService;
+    private readonly IConfiguration _config;
+    private readonly ISortingService<string> _sortingService;
     private readonly List<Row> _content = new List<Row>();
     private readonly string _separator = ". ";
     private List<string> _lines = new List<string>();
 
-    public ChunkFile(IConfiguration config, ISortingService<Row> sortingService)
+    public ChunkFile(IConfiguration config, ISortingService<string> sortingService)
     {
         _config = config;
         _sortingService = sortingService;
@@ -54,31 +54,33 @@ public class ChunkFile: IDisposable
     
     public void SortContent()
     {
-        foreach (var cells in _lines.Select(line => line.Split(_separator)))
-        {
-            if (cells.Length < 1) continue;
-            _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-        }
-        _sortingService.Sort(_content);
-        _lines.Clear();
-        foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
-        {
-            _lines.Add(line);
-        }
+        // foreach (var cells in _lines.Select(line => line.Split(_separator)))
+        // {
+        //     if (cells.Length < 1) continue;
+        //     _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
+        // }
+        // _sortingService.Sort(_content);
+        // _lines.Clear();
+        // foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
+        // {
+        //     _lines.Add(line);
+        // }
+        _sortingService.Sort(_lines, _separator);
     }
 
     public async Task SortContentAsync()
     {
-        foreach (var cells in _lines.Select(line => line.Split(_separator)))
-        {
-            _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-        }
-        await _sortingService.SortAsync(_content);
-        _lines.Clear();
-        foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
-        {
-            _lines.Add(line);
-        }
+        // foreach (var cells in _lines.Select(line => line.Split(_separator)))
+        // {
+        //     _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
+        // }
+        // await _sortingService.SortAsync(_content);
+        // _lines.Clear();
+        // foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
+        // {
+        //     _lines.Add(line);
+        // }
+        await _sortingService.SortAsync(_lines, _separator);
     }
 
     public void WriteToFile(string outPath)

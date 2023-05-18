@@ -13,7 +13,8 @@ using var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices(serviceCollection =>
     {
         //serviceCollection.AddSingleton<IConfiguration, ConfigurationBuilder>();
-        serviceCollection.AddSingleton<ISortingService<Row>, SortingService>();
+        serviceCollection.AddSingleton<ISortingService<Row>, RowSortingService>();
+        serviceCollection.AddSingleton<ISortingService<string>, LineSortingService>();
         serviceCollection.AddTransient<App>();
     })
     .Build();
