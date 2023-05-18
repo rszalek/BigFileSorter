@@ -12,7 +12,7 @@ public class ChunkFile: IDisposable
     private readonly IConfiguration _config;
     private readonly ISortingService<string> _sortingService;
     private readonly List<Row> _content = new List<Row>();
-    private readonly string _separator = ". ";
+    private readonly string _separator;
     private List<string> _lines = new List<string>();
 
     public ChunkFile(IConfiguration config, ISortingService<string> sortingService)
