@@ -10,117 +10,148 @@ public class OutputFileWriter: IAsyncDisposable
     private readonly IConfiguration _config;
     private readonly ISortingService<string> _sortingService;
     private readonly StreamWriter _streamWriter;
-    private List<StreamReader> _readers;
-    private List<string> _chunkRows;
-    private string inputPath = "";
-    private string outputPath = "";
-    private string notSortedFileExtension = "notsorted";
-    private string sortedFileExtension = "sorted";
-    private bool deleteAfterSorting = true;
+    private readonly string _inputPath;
+    private readonly string _outputPath;
+    private readonly string _notSortedFileExtension;
+    private readonly string _sortedFileExtension;
+    private readonly int _outputBufferMaxLines;
+    private readonly bool _deleteAfterSorting;
+    //private List<StreamReader> _readers;
 
     public OutputFileWriter(IConfiguration config, ISortingService<string> sortingService)
     {
         _config = config;
         _sortingService = sortingService;
-        inputPath = _config.GetSection("InputFileOptions").GetValue<string>("Path") ?? string.Empty;
-        outputPath = _config.GetSection("OutputFileOptions").GetValue<string>("Path") ?? string.Empty;
-        var fullOutputPath = string.Concat(Directory.GetCurrentDirectory(), outputPath);
-        sortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension") ?? string.Empty;
-        notSortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension") ?? string.Empty;
-        deleteAfterSorting = _config.GetSection("ChunkFileOptions").GetValue<bool>("DeleteNotSortedChunks");
-        var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
-        var sortedChunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{sortedFileExtension}")).ToList();
-        _readers = new List<StreamReader>();
-        // Creating chunk file readers for not empty chunks
-        foreach (var streamReader in sortedChunkFilePathList.Select(chunkPath => new StreamReader(chunkPath)).Where(streamReader => !streamReader.EndOfStream))
-        {
-            _readers.Add(streamReader);
-        }
-        _chunkRows = new List<string>();
+        _inputPath = _config.GetSection("InputFileOptions").GetValue<string>("Path") ?? string.Empty;
+        _outputPath = _config.GetSection("OutputFileOptions").GetValue<string>("Path") ?? string.Empty;
+        var fullOutputPath = string.Concat(Directory.GetCurrentDirectory(), _outputPath);
+        _sortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension") ?? string.Empty;
+        _notSortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension") ?? string.Empty;
+        _outputBufferMaxLines = _config.GetSection("OutputFileOptions").GetValue<int>("OutputBufferMaxLines");
+        _deleteAfterSorting = _config.GetSection("ChunkFileOptions").GetValue<bool>("DeleteNotSortedChunks");
+        // _readers = new List<StreamReader>();
+        // // Creating chunk file readers for not empty chunks
+        // foreach (var streamReader in sortedChunkFilePathList.Select(chunkPath => new StreamReader(chunkPath)).Where(streamReader => !streamReader.EndOfStream))
+        // {
+        //     _readers.Add(streamReader);
+        // }
         _streamWriter = File.CreateText(fullOutputPath);
         Console.WriteLine($"{DateTime.Now:hh:mm:ss} Output file initiated");
     }
 
     public async Task ProcessChunks()
     {
-        var columnSeparatorValue = _config.GetSection("InputFileOptions").GetValue<string>("ColumnSeparator");
-        if (columnSeparatorValue == null) return; //todo log or exception;
-        var chunkSortedExtensionValue = _config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension");
-        if (chunkSortedExtensionValue == null)  return; //todo log or exception;
+        var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(_inputPath));
+        var sortedFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{_sortedFileExtension}")).ToList();
+        while (sortedFilePathList.Count > 1)
+        {
+            // 1. group files into chunks of 5
+            var groupedPathLists = sortedFilePathList.Chunk(5).ToList();
+            // 2. loop on every group:
+            var iterator = 0;
+            foreach (var pathList in groupedPathLists)
+            {
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} Merging {pathList.Length} files...");
+                //   a) get 5 files from the list and merge to 1 file
+                //   b) save the file as file_1.sorted
+                await MergeFilesWithSorting(pathList, Path.Combine(chunkDirectory, $"file_{iterator++}.sorted"));
+                //   c) delete already processed .sorted files
+                foreach (var processedPath in pathList)
+                {
+                    var tempPath = Path.ChangeExtension(processedPath, ".tmp");
+                    File.Move(processedPath, tempPath);
+                    //File.Delete(tempPath);
+                }
+                Console.WriteLine($"{DateTime.Now:hh:mm:ss} Files merged.");
+            }
+            // 3. get sortedChunkFilePathList again, there will be 1 or more new file_x.sorted files now
+            sortedFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{_sortedFileExtension}")).ToList();
+            // 4. if still more than 1 .sorted files found, repeat the process
+        }
+    }
 
-        // Get Row values from the first lines of chunks
-        foreach (var chunkReader in _readers)
+    private async Task MergeFilesWithSorting(string[] filePaths, string outputPath)
+    {
+        var inputBuffers = new string[filePaths.Length];
+        var outputBuffer = new StringBuilder();
+        var bufferIndex = 0;
+        // Creating chunk file readers for not empty chunks
+        var readers = filePaths.Select(chunkPath => new StreamReader(chunkPath)).Where(streamReader => !streamReader.EndOfStream).ToList();
+        await using var writer = new StreamWriter(outputPath);
+        var chunkFirstLines = new List<string>(readers.Count);
+        // Get first lines of chunk files
+        foreach (var chunkReader in readers)
         {
             var line = await chunkReader.ReadLineAsync();
             if (line == null) continue; // should not happen, because it means EndOfStream = true and these are filtered out
-            //var cells = line.Split(columnSeparatorValue);
-            //_chunkRows.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-            _chunkRows.Add(line);
+            chunkFirstLines.Add(line);
         }
 
-        Console.WriteLine($"{DateTime.Now:hh:mm:ss} Sorted chunk files found: {_readers.Count}. Processing...");
-        // Merging chunks into one output file
-        var buffer = new StringBuilder();
-        var maxOutBufferLines = 10000;
-        var bufferIndex = 0;
-        while (true)
+        try
         {
-            var smallestValueChunkIndex = -1;
-            string? smallestValueRow = null;
-            // Find smallest Row value from the first lines of chunks
-            for (var chunkFileIndex = 0; chunkFileIndex < _readers.Count; chunkFileIndex++)
+            while (true)
             {
-                if (smallestValueRow != null && _sortingService.Comparison(_chunkRows[chunkFileIndex], smallestValueRow) >= 0) continue;
-                smallestValueRow = _chunkRows[chunkFileIndex];
-                smallestValueChunkIndex = chunkFileIndex;
+                var smallestValueChunkIndex = -1;
+                string? smallestValueRow = null;
+                // Find smallest value from the first lines of chunks
+                for (var chunkFileIndex = 0; chunkFileIndex < readers.Count; chunkFileIndex++)
+                {
+                    //if (smallestValueRow != null && _sortingService.Comparison(chunkFirstLines[chunkFileIndex], smallestValueRow) >= 0) continue;
+                    smallestValueRow = chunkFirstLines[chunkFileIndex];
+                    smallestValueChunkIndex = chunkFileIndex;
+                }
+                if (smallestValueChunkIndex == -1 || smallestValueRow == null) // no more chunk data to compare
+                {
+                    break;
+                }
+                // if (bufferIndex >= _outputBufferMaxLines)
+                // {
+                //     await writer.WriteLineAsync(buffer);
+                //     //await File.AppendAllTextAsync(outputPath, buffer.ToString());
+                //     buffer.Clear();
+                //     bufferIndex = 0;
+                //     buffer = new StringBuilder();
+                //     continue;
+                // }
+                outputBuffer.AppendLine(smallestValueRow);
+                // Read next line from the chunk which had the smallest value
+                var line = "";
+                do
+                {
+                    line = await readers[smallestValueChunkIndex].ReadLineAsync();
+                } while (line == "");
+                if (line == null) // end of file
+                {
+                    readers[smallestValueChunkIndex].Dispose();
+                    readers.RemoveAt(smallestValueChunkIndex);
+                    chunkFirstLines.RemoveAt(smallestValueChunkIndex);
+                    continue;
+                }
+                chunkFirstLines[smallestValueChunkIndex] = line;
+                bufferIndex++;
             }
-            if (smallestValueChunkIndex == -1 || smallestValueRow == null) // no more chunk data to compare
-            {
-                break;
-            }
-            if (bufferIndex >= maxOutBufferLines)
-            {
-                await WriteBufferAsync(buffer.ToString());
-                buffer.Clear();
-                bufferIndex = 0;
-                buffer = new StringBuilder();
-                continue;
-            }
-            //buffer.AppendLine($"{smallestValueRow.Number}{columnSeparatorValue}{smallestValueRow.Text}");
-            buffer.AppendLine(smallestValueRow);
-            // Read next line from the chunk which had the smallest value
-            var line = "";
-            do
-            {
-                line = await _readers[smallestValueChunkIndex].ReadLineAsync();
-            } while (line == "");
-            if (line == null) // end of file
-            {
-                _readers[smallestValueChunkIndex].Dispose();
-                _readers.RemoveAt(smallestValueChunkIndex);
-                _chunkRows.RemoveAt(smallestValueChunkIndex);
-                continue;
-            }
-            //var cells = line.Split(columnSeparatorValue);
-            //_chunkRows[smallestValueChunkIndex] = new Row(cells[0].ConvertToLong(), cells[1]);
-            _chunkRows[smallestValueChunkIndex] = line;
-            bufferIndex++;
+            // if still anything in the buffer
+            // if (buffer.Length > 0)
+            // {
+            //     await writer.WriteAsync(buffer);
+            //     //await File.AppendAllTextAsync(outputPath, buffer.ToString());
+            // }
         }
-        // if still anything in the buffer
-        if (buffer.Length > 0)
+        finally
         {
-            await WriteBufferAsync(buffer.ToString());
-            buffer.Clear();
+            //await writer.FlushAsync();
+            await writer.WriteAsync(outputBuffer);
+            outputBuffer.Clear();
+            writer.Close();
         }
-        Console.WriteLine();
     }
-
+    
     private void DeleteNotSortedChunkFiles()
     {
         try
         {
-            var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(inputPath));
-            var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{notSortedFileExtension}")).ToList();
+            var chunkDirectory = string.Concat(Directory.GetCurrentDirectory(), Path.GetDirectoryName(_inputPath));
+            var chunkFilePathList = Directory.GetFiles(chunkDirectory).Where(file => Path.GetExtension(file).Equals($".{_notSortedFileExtension}")).ToList();
             foreach (var path in chunkFilePathList)
             {
                 var pathToDelete = Path.ChangeExtension(path, ".old");
@@ -153,7 +184,7 @@ public class OutputFileWriter: IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _streamWriter.DisposeAsync();
-        if (deleteAfterSorting)
+        if (_deleteAfterSorting)
         {
             DeleteNotSortedChunkFiles();
         }
