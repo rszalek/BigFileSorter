@@ -72,20 +72,24 @@ public class OutputFileWriter: IAsyncDisposable
 
     private async Task MergeFilesWithSorting(string[] filePaths, string outputPath)
     {
-        var inputBuffers = new string[filePaths.Length];
+        var inputBuffers = new List<string>(filePaths.Length);
         var outputBuffer = new StringBuilder();
         var bufferIndex = 0;
         // Creating chunk file readers for not empty chunks
         var readers = filePaths.Select(chunkPath => new StreamReader(chunkPath)).Where(streamReader => !streamReader.EndOfStream).ToList();
         await using var writer = new StreamWriter(outputPath);
         var chunkFirstLines = new List<string>(readers.Count);
-        // Get first lines of chunk files
+        // Load all content of files to memory
         foreach (var chunkReader in readers)
         {
-            var line = await chunkReader.ReadLineAsync();
-            if (line == null) continue; // should not happen, because it means EndOfStream = true and these are filtered out
-            chunkFirstLines.Add(line);
+            var inputContent = await chunkReader.ReadToEndAsync();
+            inputBuffers.Add(inputContent);
         }
+        // Get first lines of chunk files
+        chunkFirstLines.AddRange(
+            from content in inputBuffers
+            let firstNewLineIndex = content.IndexOf(Environment.NewLine, StringComparison.Ordinal)
+            select content.Substring(0, firstNewLineIndex));
 
         try
         {
@@ -96,7 +100,7 @@ public class OutputFileWriter: IAsyncDisposable
                 // Find smallest value from the first lines of chunks
                 for (var chunkFileIndex = 0; chunkFileIndex < readers.Count; chunkFileIndex++)
                 {
-                    //if (smallestValueRow != null && _sortingService.Comparison(chunkFirstLines[chunkFileIndex], smallestValueRow) >= 0) continue;
+                    if (smallestValueRow != null && _sortingService.Comparison(chunkFirstLines[chunkFileIndex], smallestValueRow) >= 0) continue;
                     smallestValueRow = chunkFirstLines[chunkFileIndex];
                     smallestValueChunkIndex = chunkFileIndex;
                 }
