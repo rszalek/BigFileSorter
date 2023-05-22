@@ -34,16 +34,6 @@ public class ChunkFile: IDisposable
         _lines.Clear();
         var readLines = await File.ReadAllLinesAsync(inputPath);
         _lines = readLines.ToList();
-
-        // using var reader = File.OpenText(inputPath);
-        // while (!reader.EndOfStream)
-        // {
-        //     var line = await reader.ReadLineAsync();
-        //     if (string.IsNullOrEmpty(line)) continue;
-        //     _lines.Add(line);
-        // }
-        //var buffer = await reader.ReadToEndAsync();
-        //LoadContent(buffer);
     }
 
     private void LoadContent(string buffer)
@@ -54,32 +44,11 @@ public class ChunkFile: IDisposable
     
     public void SortContent()
     {
-        // foreach (var cells in _lines.Select(line => line.Split(_separator)))
-        // {
-        //     if (cells.Length < 1) continue;
-        //     _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-        // }
-        // _sortingService.Sort(_content);
-        // _lines.Clear();
-        // foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
-        // {
-        //     _lines.Add(line);
-        // }
         _sortingService.Sort(_lines, _separator);
     }
 
     public async Task SortContentAsync()
     {
-        // foreach (var cells in _lines.Select(line => line.Split(_separator)))
-        // {
-        //     _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-        // }
-        // await _sortingService.SortAsync(_content);
-        // _lines.Clear();
-        // foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
-        // {
-        //     _lines.Add(line);
-        // }
         await _sortingService.SortAsync(_lines, _separator);
     }
 
@@ -91,24 +60,7 @@ public class ChunkFile: IDisposable
     public async Task WriteToFileAsync(string outPath)
     {
         await File.WriteAllLinesAsync(outPath, _lines);
-        
-        
-        // await using var writer = new StreamWriter(outPath); 
-        // var buffer = new StringBuilder();
-        // try
-        // {
-        //     foreach (var line in _lines)
-        //     {
-        //         buffer.AppendLine(line);
-        //     }
-        //     await writer.WriteLineAsync(buffer.ToString());
-        // }
-        // finally
-        // {
-        //     await writer.FlushAsync();
-        //     buffer.Clear();
-        //     writer.Close();
-        // }
+
     }
 
     public void Dispose()
