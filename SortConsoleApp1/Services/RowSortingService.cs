@@ -1,11 +1,16 @@
 using SortConsoleApp1.Extras;
 using SortConsoleApp1.Interfaces;
 
-namespace SortConsoleApp1;
+namespace SortConsoleApp1.Services;
 
-internal sealed class SortingService: ISortingService<Row>
+internal sealed class RowSortingService: ISortingService<Row>
 {
-    public async Task Sort(List<Row> inputList)
+    public void Sort(List<Row> inputList, string columnSeparator = "")
+    {
+        inputList.Sort(Comparison);
+    }
+
+    public async Task SortAsync(List<Row> inputList, string columnSeparator = "")
     {
         await Task.Run(() => { inputList.Sort(Comparison); });
     }

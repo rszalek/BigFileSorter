@@ -7,34 +7,33 @@ using SortConsoleApp1.Interfaces;
 
 namespace SortConsoleApp1;
 
-public class ChunkFile: IAsyncDisposable
+public class ChunkFile: IDisposable
 {
-    private IConfiguration _config;
-    private ISortingService<Row> _sortingService;
-    private readonly List<Row> _content = new List<Row>();
-    private readonly string _separator = ". ";
+    private readonly IConfiguration _config;
+    private readonly ISortingService<string> _sortingService;
+    //private readonly List<Row> _content = new List<Row>();
+    private readonly string _separator;
     private List<string> _lines = new List<string>();
 
-    public ChunkFile(IConfiguration config, ISortingService<Row> sortingService)
+    public ChunkFile(IConfiguration config, ISortingService<string> sortingService)
     {
         _config = config;
         _sortingService = sortingService;
-        var columnSeparatorValue = _config.GetSection("InputFileOptions:ColumnSeparator").Value;
-        if (columnSeparatorValue != null) _separator = columnSeparatorValue;
+        _separator = _config.GetSection("InputFileOptions").GetValue<string>("ColumnSeparator") ?? ". ";
+    }
+
+    public void ReadFromFile(string inputPath)
+    {
+        _lines.Clear();
+        var readLines = File.ReadLines(inputPath);
+        _lines = readLines.ToList();
     }
 
     public async Task ReadFromFileAsync(string inputPath)
     {
         _lines.Clear();
-        using var reader = File.OpenText(inputPath);
-        while (!reader.EndOfStream)
-        {
-            var line = await reader.ReadLineAsync();
-            if (string.IsNullOrEmpty(line)) continue;
-            _lines.Add(line);
-        }
-        //var buffer = await reader.ReadToEndAsync();
-        //LoadContent(buffer);
+        var readLines = await File.ReadAllLinesAsync(inputPath);
+        _lines = readLines.ToList();
     }
 
     private void LoadContent(string buffer)
@@ -43,42 +42,31 @@ public class ChunkFile: IAsyncDisposable
         _lines = buffer.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).ToList();
     }
     
-    public async Task SortContent()
+    public void SortContent()
     {
-        foreach (var cells in _lines.Select(line => line.Split(_separator)))
-        {
-            _content.Add(new Row(cells[0].ConvertToLong(), cells[1]));
-        }
-        await _sortingService.Sort(_content);
-        _lines.Clear();
-        foreach (var line in _content.Select(row => $"{row.Number}{_separator}{row.Text}"))
-        {
-            _lines.Add(line);
-        }
+        _sortingService.Sort(_lines, _separator);
+    }
+
+    public async Task SortContentAsync()
+    {
+        await _sortingService.SortAsync(_lines, _separator);
+    }
+
+    public void WriteToFile(string outPath)
+    {
+        File.WriteAllLines(outPath, _lines);
     }
 
     public async Task WriteToFileAsync(string outPath)
     {
-        await using var writer = new StreamWriter(outPath); 
-        var buffer = new StringBuilder();
-        try
-        {
-            foreach (var line in _lines)
-            {
-                buffer.AppendLine(line);
-            }
-            await writer.WriteLineAsync(buffer.ToString());
-        }
-        finally
-        {
-            buffer.Clear();
-        }
+        await File.WriteAllLinesAsync(outPath, _lines);
+
     }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
         _lines.Clear();
-        _content.Clear();
+        //_content.Clear();
         GC.Collect();
     }
 }
