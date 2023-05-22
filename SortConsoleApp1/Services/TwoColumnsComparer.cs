@@ -1,6 +1,6 @@
 using SortConsoleApp1.Extras;
 
-namespace SortConsoleApp1;
+namespace SortConsoleApp1.Services;
 
 class TwoColumnsComparer : IComparer<string>
 {

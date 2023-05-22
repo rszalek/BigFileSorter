@@ -11,7 +11,7 @@ public class ChunkFile: IDisposable
 {
     private readonly IConfiguration _config;
     private readonly ISortingService<string> _sortingService;
-    private readonly List<Row> _content = new List<Row>();
+    //private readonly List<Row> _content = new List<Row>();
     private readonly string _separator;
     private List<string> _lines = new List<string>();
 
@@ -25,7 +25,7 @@ public class ChunkFile: IDisposable
     public void ReadFromFile(string inputPath)
     {
         _lines.Clear();
-        var readLines = File.ReadAllLines(inputPath);
+        var readLines = File.ReadLines(inputPath);
         _lines = readLines.ToList();
     }
 
@@ -66,7 +66,7 @@ public class ChunkFile: IDisposable
     public void Dispose()
     {
         _lines.Clear();
-        _content.Clear();
+        //_content.Clear();
         GC.Collect();
     }
 }

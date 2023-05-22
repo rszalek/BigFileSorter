@@ -1,7 +1,7 @@
 using SortConsoleApp1.Extras;
 using SortConsoleApp1.Interfaces;
 
-namespace SortConsoleApp1;
+namespace SortConsoleApp1.Services;
 
 internal sealed class LineSortingService: ISortingService<string>
 {

@@ -14,10 +14,11 @@ public class OutputFileWriter: IAsyncDisposable
     private readonly string _fullOutputPath;
     private readonly string _notSortedFileExtension;
     private readonly string _sortedFileExtension;
+    private readonly int _mergeBufferMaxLines;
+    private readonly int _mergeMaxFilesCount;
     private readonly int _outputBufferMaxLines;
     private readonly bool _deleteAfterSorting;
     private readonly int _iterationsAllowed;
-    //private List<StreamReader> _readers;
 
     public OutputFileWriter(IConfiguration config, ISortingService<string> sortingService)
     {
@@ -28,17 +29,11 @@ public class OutputFileWriter: IAsyncDisposable
         _fullOutputPath = string.Concat(Directory.GetCurrentDirectory(), _outputPath);
         _sortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("SortedExtension") ?? string.Empty;
         _notSortedFileExtension = _config.GetSection("ChunkFileOptions").GetValue<string>("NotSortedExtension") ?? string.Empty;
+        _mergeBufferMaxLines = _config.GetSection("OutputFileOptions").GetValue<int>("MergeBufferMaxLines");
+        _mergeMaxFilesCount = _config.GetSection("OutputFileOptions").GetValue<int>("MergeMaxFilesCount");
         _outputBufferMaxLines = _config.GetSection("OutputFileOptions").GetValue<int>("OutputBufferMaxLines");
         _deleteAfterSorting = _config.GetSection("ChunkFileOptions").GetValue<bool>("DeleteNotSortedChunks");
         _iterationsAllowed = _config.GetSection("OutputFileOptions").GetValue<int>("IterationsAllowed");
-        // _readers = new List<StreamReader>();
-        // // Creating chunk file readers for not empty chunks
-        // foreach (var streamReader in sortedChunkFilePathList.Select(chunkPath => new StreamReader(chunkPath)).Where(streamReader => !streamReader.EndOfStream))
-        // {
-        //     _readers.Add(streamReader);
-        // }
-        //_streamWriter = File.CreateText(fullOutputPath);
-        //Console.WriteLine($"{DateTime.Now:hh:mm:ss} Output file initiated");
         if (File.Exists(_fullOutputPath))
         {
             File.Delete(_fullOutputPath);
@@ -55,7 +50,7 @@ public class OutputFileWriter: IAsyncDisposable
         {
             Console.WriteLine($"{DateTime.Now:hh:mm:ss} Iteration {iterationLevel} started.");
             // 1. group files into chunks of 5
-            var groupedPathLists = sortedFilePathList.Chunk(5).ToList();
+            var groupedPathLists = sortedFilePathList.Chunk(_mergeMaxFilesCount).ToList();
             // 2. loop on every group:
             var iterator = 0;
             foreach (var pathList in groupedPathLists)
@@ -64,12 +59,11 @@ public class OutputFileWriter: IAsyncDisposable
                 //   a) get 5 files from the list and merge to 1 file
                 //   b) save the file as file_1.sorted
                 await MergeFilesWithSorting(pathList, Path.Combine(chunkDirectory, $"file_{iterator++}_{DateTime.Now.ToString("yyMMddHHmmss")}.sorted"));
-                //   c) delete already processed .sorted files
+                //   c) rename already processed .sorted files to .tmp
                 foreach (var processedPath in pathList)
                 {
                     var tempPath = Path.ChangeExtension(processedPath, ".tmp");
                     File.Move(processedPath, tempPath);
-                    //File.Delete(tempPath);
                 }
                 Console.WriteLine($"{DateTime.Now:hh:mm:ss} Files merged.");
             }
@@ -87,18 +81,21 @@ public class OutputFileWriter: IAsyncDisposable
         // 5. if only one file left, that means this is the final sorted file
         var sortedFilePath = sortedFilePathList.First();
         File.Move(sortedFilePath, _fullOutputPath);
-        // 6. clean temporary files
+        // 6. clean temporary files at the end
     }
 
     private async Task<Queue<string>> LoadInputBuffer(StreamReader reader, int numberOfLines)
     {
         var bufferQueue = new Queue<string>(numberOfLines);
+        if (reader.EndOfStream) return bufferQueue;
         for (var i = 0; i < numberOfLines; i++)
         {
             var line = await reader.ReadLineAsync();
+            if (line != null)
+            {
+                bufferQueue.Enqueue(line);
+            }
             if (reader.EndOfStream) break;
-            if (line == null) continue;
-            bufferQueue.Enqueue(line);
         }
         return bufferQueue;
     }
@@ -115,7 +112,7 @@ public class OutputFileWriter: IAsyncDisposable
         for(var i = 0; i < readers.Length; i++)
         {
             // buffer x lines from input files
-            inputBuffers[i] = await LoadInputBuffer(readers[i], 1000);
+            inputBuffers[i] = await LoadInputBuffer(readers[i], _mergeBufferMaxLines);
             chunkFirstLines[i] = inputBuffers[i].Dequeue(); // get first items from the buffer queue
         }
         await using var writer = new StreamWriter(outputPath);
@@ -149,7 +146,7 @@ public class OutputFileWriter: IAsyncDisposable
                 // Refill the buffer with next lines from the chunk file
                 if (inputBuffers[smallestValueChunkIndex].Count == 0)
                 {
-                    inputBuffers[smallestValueChunkIndex] = await LoadInputBuffer(readers[smallestValueChunkIndex], 1000);
+                    inputBuffers[smallestValueChunkIndex] = await LoadInputBuffer(readers[smallestValueChunkIndex], _mergeBufferMaxLines);
                 }
                 if (inputBuffers[smallestValueChunkIndex].Count == 0) // still empty = empty buffer (end of file)
                 {
@@ -170,7 +167,6 @@ public class OutputFileWriter: IAsyncDisposable
         }
         finally
         {
-            //await writer.FlushAsync();
             outputBuffer.Clear();
             writer.Close();
         }
@@ -195,22 +191,6 @@ public class OutputFileWriter: IAsyncDisposable
         }
     }
 
-    // private async Task WriteOneLineAsync(Row row, string separator)
-    // {
-    //     var formattedLine = $"{row.Number}{separator}{row.Text}";
-    //     await _streamWriter.WriteLineAsync(formattedLine);
-    // }
-    //
-    // private async Task WriteBufferAsync(string buffer)
-    // {
-    //     await _streamWriter.WriteAsync(buffer);
-    // }
-    //
-    // public async Task FlushAllAsync()
-    // {
-    //     await _streamWriter.FlushAsync();
-    // }
-    //
     public async ValueTask DisposeAsync()
     {
         //await _streamWriter.DisposeAsync();
