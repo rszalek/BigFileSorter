@@ -41,25 +41,25 @@ Configuration file: **appsettings.json**
     },
     "ChunkFileOptions": {
         "NotSortedExtension": "notsorted",              -- extension for temporary not sorted chunk files
-        "SortedExtension": "sorted",                    --
-        "MaxChunkFileSizeInMB": 20,                     --
-        "RunSplittingModule": true,                     --
-        "RunSortingModule": true,                       --
-        "RunMergingModule": true,                       --
-        "DeleteNotSortedChunks": false,                 --
-        "DeleteSortedChunks": false                     --
+        "SortedExtension": "sorted",                    -- extension for temporary sorted chunk files
+        "MaxChunkFileSizeInMB": 20,                     -- maximum average size of a not sorted chunk file
+        "RunSplittingModule": true,                     -- first step module of the process to be run or not (splitting the input file into not sorted chunks)
+        "RunSortingModule": true,                       -- second step module of the process to be run or not (sorting all chunk files)
+        "RunMergingModule": true,                       -- third step module of the process to be run or not (merging sorted chunk files into output file, using K-way merging algorithm)
+        "DeleteNotSortedChunks": false,                 -- do you want to delete not sorted files after the process?
+        "DeleteSortedChunks": false                     -- do you want to delete sorted files after the process?
     },
     "OutputFileOptions": {
-        "Path": "\\OutputFiles\\SortedTestFile.txt",    --
-        "ColumnSeparator": ". ",                        --
-        "MergeBufferMaxLines": 1000000,                 --
-        "MergeMaxFilesCount": 5,                        --
-        "OutputBufferMaxLines": 1000000,                --
-        "IterationsAllowed": -1                         --
+        "Path": "\\OutputFiles\\SortedTestFile.txt",    -- path to the output sorted file
+        "ColumnSeparator": ". ",                        -- separator used for the output file
+        "MergeBufferMaxLines": 1000000,                 -- maximum lines buffered when merging chunk files, before they are saved to a disk
+        "MergeMaxFilesCount": 5,                        -- maximum count of files used to be merged on one merging iteration level
+        "OutputBufferMaxLines": 1000000,                -- maximum lines buffered when building output file, before it is saved to a disk
+        "IterationsAllowed": -1                         -- (for testing purpose) number of iterations after which the program stops merging files, -1 means "not used"
     },
     "Sorting": {
-        "TasksPerGroup": 16,                            --
-        "InputBufferMaxLines": 100000                   --
+        "TasksPerGroup": 16,                            -- number of simultenaous tasks (multithreading) used to sort chunk files
+        "InputBufferMaxLines": 100000                   -- max lines buffered per chunk file when sorting it
     }
 }
 ```
